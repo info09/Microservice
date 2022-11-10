@@ -1,46 +1,41 @@
-
 using Common.Logging;
+using Product.API.Extensions;
+using Product.API.Persistence;
 using Serilog;
 
-Log.Logger = new LoggerConfiguration().WriteTo.Console().CreateBootstrapLogger();
-Log.Information("Starting Product API up");
+var builder = WebApplication.CreateBuilder(args);
+
+Log.Information("Start Product API up");
 
 try
 {
-    var builder = WebApplication.CreateBuilder(args);
-
     builder.Host.UseSerilog(Serilogger.Configure);
+    builder.Host.AddAppConfigurations();
     // Add services to the container.
-
-    builder.Services.AddControllers();
-    // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
-    builder.Services.AddEndpointsApiExplorer();
-    builder.Services.AddSwaggerGen();
+    builder.Services.AddInfrastructure(builder.Configuration);
 
     var app = builder.Build();
+    app.UseInfrastructure();
 
-    // Configure the HTTP request pipeline.
-    if (app.Environment.IsDevelopment())
+    app.MigrateDatabase<ProductContext>((context, _) =>
     {
-        app.UseSwagger();
-        app.UseSwaggerUI();
-    }
-
-    app.UseHttpsRedirection();
-
-    app.UseAuthorization();
-
-    app.MapControllers();
-
-    app.Run();
+        ProductContextSeed.SeedProductAsync(context, Log.Logger).Wait();
+    }).Run();
+    //app.Run();
 }
+
 catch (Exception ex)
 {
-    Log.Fatal(ex, "Unhandlerd exception");
+    string type = ex.GetType().Name;
+    if (type.Equals("StopTheHostException", StringComparison.Ordinal))
+    {
+        throw;
+    }
+
+    Log.Fatal(ex, $"Unhandled exception: {ex.Message}");
 }
 finally
 {
     Log.Information("Shut down Product API complete");
     Log.CloseAndFlush();
 }
-
